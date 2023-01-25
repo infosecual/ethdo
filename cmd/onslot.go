@@ -35,30 +35,30 @@ var onSlotCmd = &cobra.Command{
 		for {
 			if viper.GetBool("fuzz") {
 				fmt.Println("Submitting fuzzing messages...")
-
 			} else {
 				fmt.Println("Submitting regular messages...")
-				if viper.GetBool("BlsExecutionChange") {
+				if viper.GetBool("bls") {
 					fmt.Println("Submitting BLS Execution Change...")
-					if err := onslot.RegularBlsExecutionChange(); err != nil {
+					err := onslot.RegularBlsExecutionChange()
+					if err != nil {
 						fmt.Printf("Failed to submit BLS Execution Change: %v", err)
 					}
-					if viper.GetBool("Deposit") {
-						fmt.Println("Submitting Deposit...")
-						if err := onslot.RegularDeposit(); err != nil {
-							fmt.Printf("Failed to submit Deposit: %v", err)
-						}
-					}
-					if viper.GetBool("Exit") {
-						fmt.Println("Submitting Exit...")
-						if err := onslot.RegularExit(); err != nil {
-							fmt.Printf("Failed to submit Exit: %v", err)
-						}
+				}
+				if viper.GetBool("Deposit") {
+					fmt.Println("Submitting Deposit...")
+					err := onslot.RegularDeposit()
+					if err != nil {
+						fmt.Printf("Failed to submit Deposit: %v", err)
 					}
 				}
-
+				if viper.GetBool("Exit") {
+					fmt.Println("Submitting Exit...")
+					err := onslot.RegularExit()
+					if err != nil {
+						fmt.Printf("Failed to submit Exit: %v", err)
+					}
+				}
 			}
-			// sleep for a slot
 			time.Sleep(12 * time.Second)
 		}
 	},
