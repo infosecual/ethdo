@@ -19,6 +19,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"os"
 	"regexp"
 	"strings"
@@ -466,6 +467,21 @@ func (c *command) fuzzBlsChangeMessage(operation *capella.BLSToExecutionChange) 
 	//fmt.Println("fuzzing with seed", c.fuzzSeed)
 	fuzziness := viper.GetInt("fuzziness")
 	fmt.Println("fuzzing with fuzziness: ", fuzziness)
+	fmt.Println("before fuzzing: ", operation)
+	//ValidatorIndex     phase0.ValidatorIndex
+	//FromBLSPubkey      phase0.BLSPubKey           `ssz-size:"48"`
+	//ToExecutionAddress bellatrix.ExecutionAddress `ssz-size:"20"`
+
+}
+
+func InitializeFuzzingSeed() int64 {
+	seed := viper.GetInt64("seed")
+	if seed == 0 {
+		seed = rand.Int63()
+	}
+	rand.Seed(seed)
+	fmt.Println("fuzzing with seed", seed)
+	return seed
 }
 
 func (c *command) createSignedOperation(ctx context.Context,
@@ -475,6 +491,9 @@ func (c *command) createSignedOperation(ctx context.Context,
 	*capella.SignedBLSToExecutionChange,
 	error,
 ) {
+
+	_ = InitializeFuzzingSeed()
+
 	pubkey, err := util.BestPublicKey(withdrawalAccount)
 	if err != nil {
 		return nil, err

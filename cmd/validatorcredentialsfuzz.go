@@ -66,6 +66,7 @@ func init() {
 	validatorCredentialsFuzzCmd.Flags().String("fork-version", "", "Fork version to use for signing (overrides fetching from beacon node)")
 	validatorCredentialsFuzzCmd.Flags().String("genesis-validators-root", "", "Genesis validators root to use for signing (overrides fetching from beacon node)")
 	validatorCredentialsFuzzCmd.Flags().Uint("fuzziness", 5, "Fuzziness of the withdrawal credentials; 0 is no fuzziness, 100 is max")
+	validatorCredentialsFuzzCmd.Flags().Int64("seed", 0, "Seed for the fuzzing; 0 is random")
 }
 
 func validatorCredentialsFuzzBindings() {
@@ -97,6 +98,9 @@ func validatorCredentialsFuzzBindings() {
 		panic(err)
 	}
 	if err := viper.BindPFlag("fuzziness", validatorCredentialsFuzzCmd.Flags().Lookup("fuzziness")); err != nil {
+		panic(err)
+	}
+	if err := viper.BindPFlag("seed", validatorCredentialsFuzzCmd.Flags().Lookup("seed")); err != nil {
 		panic(err)
 	}
 }
