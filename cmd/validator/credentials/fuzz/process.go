@@ -463,14 +463,39 @@ func (c *command) generateOperationFromAccount(ctx context.Context,
 	return nil
 }
 
+func FuzzinessAct() bool {
+	fuzziness := viper.GetInt("fuzziness")
+	return fuzziness > rand.Intn(100)
+}
+
 func (c *command) fuzzBlsChangeMessage(operation *capella.BLSToExecutionChange) {
 	//fmt.Println("fuzzing with seed", c.fuzzSeed)
 	fuzziness := viper.GetInt("fuzziness")
+	fmt.Println()
 	fmt.Println("fuzzing with fuzziness: ", fuzziness)
 	fmt.Println("before fuzzing: ", operation)
-	//ValidatorIndex     phase0.ValidatorIndex
-	//FromBLSPubkey      phase0.BLSPubKey           `ssz-size:"48"`
-	//ToExecutionAddress bellatrix.ExecutionAddress `ssz-size:"20"`
+
+	// fuzz validator idx
+	if FuzzinessAct() {
+		operation.ValidatorIndex = phase0.ValidatorIndex(rand.Intn(1000000))
+	}
+
+	// fuzz pubkey
+	if FuzzinessAct() {
+		testcase := make([]byte, 48)
+		rand.Read(testcase)
+		copy(operation.FromBLSPubkey[:], testcase)
+	}
+
+	// fuzz ToExecutionAddress
+	if FuzzinessAct() {
+		testcase := make([]byte, 20)
+		rand.Read(testcase)
+		copy(operation.ToExecutionAddress[:], testcase)
+	}
+
+	fmt.Println("after fuzzing: ", operation)
+	fmt.Println()
 
 }
 
