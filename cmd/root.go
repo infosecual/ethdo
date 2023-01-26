@@ -130,6 +130,8 @@ func includeCommandBindings(cmd *cobra.Command) {
 		validatorDutiesBindings()
 	case "validator/exit":
 		validatorExitBindings()
+	case "validator/exitfuzz":
+		validatorExitFuzzBindings()
 	case "validator/info":
 		validatorInfoBindings()
 	case "validator/keycheck":
