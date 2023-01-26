@@ -468,12 +468,7 @@ func FuzzinessAct() bool {
 	return fuzziness > rand.Intn(100)
 }
 
-func (c *command) fuzzBlsChangeMessage(operation *capella.BLSToExecutionChange) {
-	//fmt.Println("fuzzing with seed", c.fuzzSeed)
-	fuzziness := viper.GetInt("fuzziness")
-	fmt.Println()
-	fmt.Println("fuzzing with fuzziness: ", fuzziness)
-	fmt.Println("before fuzzing: ", operation)
+func (c *command) fuzzBlsChangeMessage(operation *capella.BLSToExecutionChange) *capella.BLSToExecutionChange {
 
 	// fuzz validator idx
 	if FuzzinessAct() {
@@ -494,9 +489,36 @@ func (c *command) fuzzBlsChangeMessage(operation *capella.BLSToExecutionChange) 
 		copy(operation.ToExecutionAddress[:], testcase)
 	}
 
-	fmt.Println("after fuzzing: ", operation)
-	fmt.Println()
+	return operation
+}
 
+func (c *command) fuzzBlsChangeMessageWithRoot(operation *capella.BLSToExecutionChange, root [32]byte) (*capella.BLSToExecutionChange, [32]byte) {
+
+	// fuzz validator bls execution change message
+	operation = c.fuzzBlsChangeMessage(operation)
+
+	// fuzz root
+	if FuzzinessAct() {
+		testcase := make([]byte, 32)
+		rand.Read(testcase)
+		copy(root[:], testcase)
+	}
+
+	return operation, root
+}
+
+func (c *command) fuzzBlsChangeMessageWithSignature(operation *capella.BLSToExecutionChange, signature [96]byte) (*capella.BLSToExecutionChange, [96]byte) {
+
+	// fuzz validator bls execution change message
+	operation = c.fuzzBlsChangeMessage(operation)
+
+	// fuzz signature
+	if FuzzinessAct() {
+		testcase := make([]byte, 96)
+		rand.Read(testcase)
+		copy(signature[:], testcase)
+	}
+	return operation, signature
 }
 
 func InitializeFuzzingSeed() int64 {
@@ -505,7 +527,6 @@ func InitializeFuzzingSeed() int64 {
 		seed = rand.Int63()
 	}
 	rand.Seed(seed)
-	fmt.Println("fuzzing with seed", seed)
 	return seed
 }
 
@@ -539,7 +560,7 @@ func (c *command) createSignedOperation(ctx context.Context,
 		ToExecutionAddress: c.withdrawalAddress,
 	}
 	// fuzz before root calculation
-	c.fuzzBlsChangeMessage(operation)
+	operation = c.fuzzBlsChangeMessage(operation)
 
 	root, err := operation.HashTreeRoot()
 
@@ -552,12 +573,16 @@ func (c *command) createSignedOperation(ctx context.Context,
 		fmt.Fprintf(os.Stderr, "Signing %#x with domain %#x by public key %#x\n", root, c.domain, withdrawalAccount.PublicKey().Marshal())
 	}
 	// fuzz before signature
+	operation, root = c.fuzzBlsChangeMessageWithRoot(operation, root)
+
 	signature, err := signing.SignRoot(ctx, withdrawalAccount, nil, root, c.domain)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to sign credentials change operation")
 	}
 
 	//fuzz after signature
+	operation, signature = c.fuzzBlsChangeMessageWithSignature(operation, signature)
+
 	return &capella.SignedBLSToExecutionChange{
 		Message:   operation,
 		Signature: signature,
@@ -639,28 +664,29 @@ func (c *command) validateOperation(_ context.Context,
 	bool,
 	string,
 ) {
-	validator, exists := validators[signedOperation.Message.ValidatorIndex]
-	if !exists {
-		return false, "validator not known on chain"
-	}
-	if c.debug {
-		fmt.Fprintf(os.Stderr, "Credentials change operation: %v", signedOperation)
-		fmt.Fprintf(os.Stderr, "On-chain validator info: %v\n", validator)
-	}
-
-	if validator.WithdrawalCredentials[0] != byte(0) {
-		return false, "validator is not using BLS withdrawal credentials"
-	}
-
-	withdrawalCredentials := ethutil.SHA256(signedOperation.Message.FromBLSPubkey[:])
-	withdrawalCredentials[0] = byte(0) // BLS_WITHDRAWAL_PREFIX
-	if !bytes.Equal(withdrawalCredentials, validator.WithdrawalCredentials) {
-		if c.debug {
-			fmt.Fprintf(os.Stderr, "validator withdrawal credentials %#x do not match calculated operation withdrawal credentials %#x\n", validator.WithdrawalCredentials, withdrawalCredentials)
+	/*
+		validator, exists := validators[signedOperation.Message.ValidatorIndex]
+		if !exists {
+			return false, "validator not known on chain"
 		}
-		return false, "validator withdrawal credentials do not match those in the operation"
-	}
+		if c.debug {
+			fmt.Fprintf(os.Stderr, "Credentials change operation: %v", signedOperation)
+			fmt.Fprintf(os.Stderr, "On-chain validator info: %v\n", validator)
+		}
 
+		if validator.WithdrawalCredentials[0] != byte(0) {
+			return false, "validator is not using BLS withdrawal credentials"
+		}
+
+		withdrawalCredentials := ethutil.SHA256(signedOperation.Message.FromBLSPubkey[:])
+		withdrawalCredentials[0] = byte(0) // BLS_WITHDRAWAL_PREFIX
+		if !bytes.Equal(withdrawalCredentials, validator.WithdrawalCredentials) {
+			if c.debug {
+				fmt.Fprintf(os.Stderr, "validator withdrawal credentials %#x do not match calculated operation withdrawal credentials %#x\n", validator.WithdrawalCredentials, withdrawalCredentials)
+			}
+			return false, "validator withdrawal credentials do not match those in the operation"
+		}
+	*/
 	return true, ""
 }
 
