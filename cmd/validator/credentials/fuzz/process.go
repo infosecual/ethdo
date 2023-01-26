@@ -29,6 +29,7 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/pkg/errors"
 	"github.com/prysmaticlabs/go-ssz"
+	"github.com/spf13/viper"
 	"github.com/wealdtech/ethdo/beacon"
 	standardchaintime "github.com/wealdtech/ethdo/services/chaintime/standard"
 	"github.com/wealdtech/ethdo/signing"
@@ -396,6 +397,7 @@ func (c *command) generateOperationFromSeedAndPath(ctx context.Context,
 		fmt.Fprintf(os.Stderr, "Validator %d found with public key %s at path %s\n", validator.Index, validatorPubkey, path)
 	}
 
+	//TODO: add flag to override this check
 	if validator.WithdrawalCredentials[0] != byte(0) {
 		if c.debug {
 			fmt.Fprintf(os.Stderr, "Validator %s has non-BLS withdrawal credentials %#x\n", validatorPubkey, validator.WithdrawalCredentials)
@@ -452,11 +454,18 @@ func (c *command) generateOperationFromAccount(ctx context.Context,
 	withdrawalAccount e2wtypes.Account,
 ) error {
 	signedOperation, err := c.createSignedOperation(ctx, validator, withdrawalAccount)
+
 	if err != nil {
 		return err
 	}
 	c.signedOperations = append(c.signedOperations, signedOperation)
 	return nil
+}
+
+func (c *command) fuzzBlsChangeMessage(operation *capella.BLSToExecutionChange) {
+	//fmt.Println("fuzzing with seed", c.fuzzSeed)
+	fuzziness := viper.GetInt("fuzziness")
+	fmt.Println("fuzzing with fuzziness: ", fuzziness)
 }
 
 func (c *command) createSignedOperation(ctx context.Context,
@@ -485,7 +494,11 @@ func (c *command) createSignedOperation(ctx context.Context,
 		FromBLSPubkey:      blsPubkey,
 		ToExecutionAddress: c.withdrawalAddress,
 	}
+	// fuzz before root calculation
+	c.fuzzBlsChangeMessage(operation)
+
 	root, err := operation.HashTreeRoot()
+
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to generate root for credentials change operation")
 	}
@@ -494,11 +507,13 @@ func (c *command) createSignedOperation(ctx context.Context,
 	if c.debug {
 		fmt.Fprintf(os.Stderr, "Signing %#x with domain %#x by public key %#x\n", root, c.domain, withdrawalAccount.PublicKey().Marshal())
 	}
+	// fuzz before signature
 	signature, err := signing.SignRoot(ctx, withdrawalAccount, nil, root, c.domain)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to sign credentials change operation")
 	}
 
+	//fuzz after signature
 	return &capella.SignedBLSToExecutionChange{
 		Message:   operation,
 		Signature: signature,

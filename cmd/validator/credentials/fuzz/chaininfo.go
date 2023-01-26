@@ -27,7 +27,6 @@ import (
 func (c *command) obtainChainInfo(ctx context.Context) error {
 	// Use the offline preparation file if present (and we haven't been asked to recreate it).
 	if !c.prepareOffline {
-		fmt.Println("HERE7")
 		err := c.obtainChainInfoFromFile(ctx)
 		if err == nil {
 			return nil
@@ -54,7 +53,6 @@ func (c *command) obtainChainInfoFromFile(_ context.Context) error {
 		}
 		return errors.Wrap(err, fmt.Sprintf("cannot find %s", offlinePreparationFilename))
 	}
-	fmt.Println("HERE7")
 	if c.debug {
 		fmt.Fprintf(os.Stderr, "%s found; loading chain state\n", offlinePreparationFilename)
 	}
