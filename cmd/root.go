@@ -122,6 +122,8 @@ func includeCommandBindings(cmd *cobra.Command) {
 		validatorCredentialsGetBindings()
 	case "validator/credentials/set":
 		validatorCredentialsSetBindings()
+	case "validator/credentials/fuzz":
+		validatorCredentialsFuzzBindings()
 	case "validator/depositdata":
 		validatorDepositdataBindings()
 	case "validator/duties":
