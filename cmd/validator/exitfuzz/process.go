@@ -25,7 +25,6 @@ import (
 	"strings"
 
 	consensusclient "github.com/attestantio/go-eth2-client"
-	apiv1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/pkg/errors"
 	"github.com/prysmaticlabs/go-ssz"
@@ -315,12 +314,15 @@ func FuzzinessAct() bool {
 	return fuzziness > rand.Intn(100)
 }
 
-func (c *command) fuzzExitMessage(operation *phase0.VoluntaryExit) {
-	//fmt.Println("fuzzing with seed", c.fuzzSeed)
-	fuzziness := viper.GetInt("fuzziness")
-	fmt.Println()
-	fmt.Println("fuzzing with fuzziness: ", fuzziness)
-	fmt.Println("before fuzzing: ", operation)
+func (c *command) fuzzExitMessage(operation *phase0.VoluntaryExit) *phase0.VoluntaryExit {
+
+	// fmt.Println("fuzzing with seed", c.fuzzSeed)
+	if c.debug {
+		fuzziness := viper.GetInt("fuzziness")
+		fmt.Println()
+		fmt.Println("fuzzing with fuzziness: ", fuzziness)
+		fmt.Println("before fuzzing: ", operation)
+	}
 
 	// fuzz validator index
 	if FuzzinessAct() {
@@ -331,9 +333,41 @@ func (c *command) fuzzExitMessage(operation *phase0.VoluntaryExit) {
 	if FuzzinessAct() {
 		operation.Epoch = phase0.Epoch(rand.Intn(1000000))
 	}
+	if c.debug {
+		fmt.Println("after fuzzing: ", operation)
+		fmt.Println()
+	}
 
-	fmt.Println("after fuzzing: ", operation)
-	fmt.Println()
+	return operation
+}
+
+func (c *command) fuzzExitMessageWithRoot(operation *phase0.VoluntaryExit, root [32]byte) (*phase0.VoluntaryExit, [32]byte) {
+
+	// fuzz validator bls execution change message
+	operation = c.fuzzExitMessage(operation)
+
+	// fuzz root
+	if FuzzinessAct() {
+		testcase := make([]byte, 32)
+		rand.Read(testcase)
+		copy(root[:], testcase)
+	}
+
+	return operation, root
+}
+
+func (c *command) fuzzExitMessageWithSignature(operation *phase0.VoluntaryExit, signature [96]byte) (*phase0.VoluntaryExit, [96]byte) {
+
+	// fuzz validator bls execution change message
+	operation = c.fuzzExitMessage(operation)
+
+	// fuzz signature
+	if FuzzinessAct() {
+		testcase := make([]byte, 96)
+		rand.Read(testcase)
+		copy(signature[:], testcase)
+	}
+	return operation, signature
 }
 
 func InitializeFuzzingSeed() int64 {
@@ -372,7 +406,7 @@ func (c *command) createSignedOperation(ctx context.Context,
 	}
 
 	// fuzz before root calculation
-	c.fuzzExitMessage(operation)
+	operation = c.fuzzExitMessage(operation)
 
 	root, err := operation.HashTreeRoot()
 	if err != nil {
@@ -384,12 +418,16 @@ func (c *command) createSignedOperation(ctx context.Context,
 		fmt.Fprintf(os.Stderr, "Signing %#x with domain %#x by public key %#x\n", root, c.domain, account.PublicKey().Marshal())
 	}
 	// fuzz before signature
+	operation, root = c.fuzzExitMessageWithRoot(operation, root)
+
 	signature, err := signing.SignRoot(ctx, account, nil, root, c.domain)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to sign exit operation")
 	}
 
-	//fuzz after signature
+	// fuzz after signature
+	operation, signature = c.fuzzExitMessageWithSignature(operation, signature)
+
 	return &phase0.SignedVoluntaryExit{
 		Message:   operation,
 		Signature: signature,
@@ -445,30 +483,6 @@ func (c *command) validateOperation(_ context.Context,
 	bool,
 	string,
 ) {
-	var validatorInfo *beacon.ValidatorInfo
-	for _, chainValidatorInfo := range c.chainInfo.Validators {
-		if chainValidatorInfo.Index == c.signedOperation.Message.ValidatorIndex {
-			validatorInfo = chainValidatorInfo
-			break
-		}
-	}
-	if validatorInfo == nil {
-		return false, "validator not known on chain"
-	}
-	if c.debug {
-		fmt.Fprintf(os.Stderr, "Validator exit operation: %v", c.signedOperation)
-		fmt.Fprintf(os.Stderr, "On-chain validator info: %v\n", validatorInfo)
-	}
-
-	if validatorInfo.State == apiv1.ValidatorStateActiveExiting ||
-		validatorInfo.State == apiv1.ValidatorStateActiveSlashed ||
-		validatorInfo.State == apiv1.ValidatorStateExitedUnslashed ||
-		validatorInfo.State == apiv1.ValidatorStateExitedSlashed ||
-		validatorInfo.State == apiv1.ValidatorStateWithdrawalPossible ||
-		validatorInfo.State == apiv1.ValidatorStateWithdrawalDone {
-		return false, fmt.Sprintf("validator is in state %v, not suitable to generate an exit", validatorInfo.State)
-	}
-
 	return true, ""
 }
 
