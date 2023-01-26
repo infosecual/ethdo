@@ -19,6 +19,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"os"
 	"regexp"
 	"strings"
@@ -28,6 +29,7 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/pkg/errors"
 	"github.com/prysmaticlabs/go-ssz"
+	"github.com/spf13/viper"
 	"github.com/wealdtech/ethdo/beacon"
 	standardchaintime "github.com/wealdtech/ethdo/services/chaintime/standard"
 	"github.com/wealdtech/ethdo/signing"
@@ -308,6 +310,42 @@ func (c *command) generateOperationFromAccount(ctx context.Context,
 	return err
 }
 
+func FuzzinessAct() bool {
+	fuzziness := viper.GetInt("fuzziness")
+	return fuzziness > rand.Intn(100)
+}
+
+func (c *command) fuzzExitMessage(operation *phase0.VoluntaryExit) {
+	//fmt.Println("fuzzing with seed", c.fuzzSeed)
+	fuzziness := viper.GetInt("fuzziness")
+	fmt.Println()
+	fmt.Println("fuzzing with fuzziness: ", fuzziness)
+	fmt.Println("before fuzzing: ", operation)
+
+	// fuzz validator index
+	if FuzzinessAct() {
+		operation.ValidatorIndex = phase0.ValidatorIndex(rand.Intn(1000000))
+	}
+
+	// fuzz Epoch
+	if FuzzinessAct() {
+		operation.Epoch = phase0.Epoch(rand.Intn(1000000))
+	}
+
+	fmt.Println("after fuzzing: ", operation)
+	fmt.Println()
+}
+
+func InitializeFuzzingSeed() int64 {
+	seed := viper.GetInt64("seed")
+	if seed == 0 {
+		seed = rand.Int63()
+	}
+	rand.Seed(seed)
+	fmt.Println("fuzzing with seed", seed)
+	return seed
+}
+
 func (c *command) createSignedOperation(ctx context.Context,
 	validator *beacon.ValidatorInfo,
 	account e2wtypes.Account,
@@ -316,6 +354,8 @@ func (c *command) createSignedOperation(ctx context.Context,
 	*phase0.SignedVoluntaryExit,
 	error,
 ) {
+	_ = InitializeFuzzingSeed()
+
 	pubkey, err := util.BestPublicKey(account)
 	if err != nil {
 		return nil, err
@@ -330,6 +370,10 @@ func (c *command) createSignedOperation(ctx context.Context,
 		Epoch:          epoch,
 		ValidatorIndex: validator.Index,
 	}
+
+	// fuzz before root calculation
+	c.fuzzExitMessage(operation)
+
 	root, err := operation.HashTreeRoot()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to generate root for exit operation")
@@ -339,11 +383,13 @@ func (c *command) createSignedOperation(ctx context.Context,
 	if c.debug {
 		fmt.Fprintf(os.Stderr, "Signing %#x with domain %#x by public key %#x\n", root, c.domain, account.PublicKey().Marshal())
 	}
+	// fuzz before signature
 	signature, err := signing.SignRoot(ctx, account, nil, root, c.domain)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to sign exit operation")
 	}
 
+	//fuzz after signature
 	return &phase0.SignedVoluntaryExit{
 		Message:   operation,
 		Signature: signature,
