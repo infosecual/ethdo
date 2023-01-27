@@ -356,15 +356,7 @@ func FuzzinessAct() bool {
 	return fuzziness > rand.Intn(100)
 }
 
-func (c *command) fuzzExitMessage(operation *phase0.VoluntaryExit) {
-	//fmt.Println("fuzzing with seed", c.fuzzSeed)
-	fuzziness := viper.GetInt("fuzziness")
-	if c.debug {
-		fmt.Println()
-		fmt.Println("fuzzing with fuzziness: ", fuzziness)
-		fmt.Println("before fuzzing: ", operation)
-	}
-
+func (c *command) fuzzExitMessage(operation *phase0.VoluntaryExit) *phase0.VoluntaryExit {
 	// fuzz validator index
 	if FuzzinessAct() {
 		operation.ValidatorIndex = phase0.ValidatorIndex(rand.Intn(1000000))
@@ -378,6 +370,37 @@ func (c *command) fuzzExitMessage(operation *phase0.VoluntaryExit) {
 		fmt.Println("after fuzzing: ", operation)
 		fmt.Println()
 	}
+
+	return operation
+}
+
+func (c *command) fuzzExitMessageWithRoot(operation *phase0.VoluntaryExit, root [32]byte) (*phase0.VoluntaryExit, [32]byte) {
+
+	// fuzz validator exit message
+	operation = c.fuzzExitMessage(operation)
+
+	// fuzz root
+	if FuzzinessAct() {
+		testcase := make([]byte, 32)
+		rand.Read(testcase)
+		copy(root[:], testcase)
+	}
+
+	return operation, root
+}
+
+func (c *command) fuzzExitMessageWithSignature(operation *phase0.VoluntaryExit, signature [96]byte) (*phase0.VoluntaryExit, [96]byte) {
+
+	// fuzz validator bls execution change message
+	operation = c.fuzzExitMessage(operation)
+
+	// fuzz signature
+	if FuzzinessAct() {
+		testcase := make([]byte, 96)
+		rand.Read(testcase)
+		copy(signature[:], testcase)
+	}
+	return operation, signature
 }
 
 func (c *command) InitializeFuzzingSeed() int64 {
@@ -418,7 +441,7 @@ func (c *command) createSignedOperation(ctx context.Context,
 	}
 
 	// fuzz before root calculation
-	c.fuzzExitMessage(operation)
+	operation = c.fuzzExitMessage(operation)
 
 	root, err := operation.HashTreeRoot()
 	if err != nil {
