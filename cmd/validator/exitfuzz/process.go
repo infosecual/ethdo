@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	consensusclient "github.com/attestantio/go-eth2-client"
+	apiv1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/pkg/errors"
 	"github.com/prysmaticlabs/go-ssz"
@@ -81,7 +82,7 @@ func (c *command) process(ctx context.Context) error {
 }
 
 func (c *command) obtainOperation(ctx context.Context) error {
-	if (c.mnemonic == "" || c.path == "") && c.privateKey == "" && c.validator == "" {
+	if (c.mnemonic == "" && c.path == "") && c.privateKey == "" && c.validator == "" {
 		// No input information; fetch the operation from a file.
 		err := c.obtainOperationFromFileOrInput(ctx)
 		if err == nil {
@@ -102,8 +103,12 @@ func (c *command) obtainOperation(ctx context.Context) error {
 		case c.validator != "":
 			// Have a mnemonic and validator.
 			return c.generateOperationFromMnemonicAndValidator(ctx)
+		case c.privateKey != "":
+			// Have a mnemonic and a private key for the withdrawal address.
+			return c.generateOperationFromMnemonicAndPrivateKey(ctx)
 		default:
-			return errors.New("mnemonic must be supplied with either a path or validator")
+			// Have a mnemonic and nothing else; scan.
+			return c.generateOperationFromMnemonic(ctx)
 		}
 	}
 
@@ -184,6 +189,43 @@ func (c *command) generateOperationFromMnemonicAndValidator(ctx context.Context)
 		}
 	}
 
+	return nil
+}
+
+func (c *command) generateOperationFromMnemonicAndPrivateKey(ctx context.Context) error {
+	// Functionally identical to a simple scan, so use that.
+	return c.generateOperationFromMnemonic(ctx)
+}
+
+func (c *command) generateOperationFromMnemonic(ctx context.Context) error {
+	seed, err := util.SeedFromMnemonic(c.mnemonic)
+	if err != nil {
+		return err
+	}
+
+	// Turn the validators in to a map for easy lookup.
+	validators := make(map[string]*beacon.ValidatorInfo, 0)
+	for _, validator := range c.chainInfo.Validators {
+		validators[fmt.Sprintf("%#x", validator.Pubkey)] = validator
+	}
+
+	maxDistance := 1024
+	// Start scanning the validator keys.
+	lastFoundIndex := 0
+	for i := 0; ; i++ {
+		if i-lastFoundIndex > maxDistance {
+			if c.debug {
+				fmt.Fprintf(os.Stderr, "Gone %d indices without finding a validator, not scanning any further\n", maxDistance)
+			}
+			break
+		}
+		validatorKeyPath := fmt.Sprintf("m/12381/3600/%d/0/0", i)
+
+		if err := c.generateOperationFromSeedAndPath(ctx, validators, seed, validatorKeyPath); err != nil {
+			return errors.Wrap(err, "failed to generate operation from seed and path")
+		}
+		lastFoundIndex = i
+	}
 	return nil
 }
 
@@ -314,11 +356,10 @@ func FuzzinessAct() bool {
 	return fuzziness > rand.Intn(100)
 }
 
-func (c *command) fuzzExitMessage(operation *phase0.VoluntaryExit) *phase0.VoluntaryExit {
-
-	// fmt.Println("fuzzing with seed", c.fuzzSeed)
+func (c *command) fuzzExitMessage(operation *phase0.VoluntaryExit) {
+	//fmt.Println("fuzzing with seed", c.fuzzSeed)
+	fuzziness := viper.GetInt("fuzziness")
 	if c.debug {
-		fuzziness := viper.GetInt("fuzziness")
 		fmt.Println()
 		fmt.Println("fuzzing with fuzziness: ", fuzziness)
 		fmt.Println("before fuzzing: ", operation)
@@ -337,46 +378,17 @@ func (c *command) fuzzExitMessage(operation *phase0.VoluntaryExit) *phase0.Volun
 		fmt.Println("after fuzzing: ", operation)
 		fmt.Println()
 	}
-
-	return operation
 }
 
-func (c *command) fuzzExitMessageWithRoot(operation *phase0.VoluntaryExit, root [32]byte) (*phase0.VoluntaryExit, [32]byte) {
-
-	// fuzz validator bls execution change message
-	operation = c.fuzzExitMessage(operation)
-
-	// fuzz root
-	if FuzzinessAct() {
-		testcase := make([]byte, 32)
-		rand.Read(testcase)
-		copy(root[:], testcase)
-	}
-
-	return operation, root
-}
-
-func (c *command) fuzzExitMessageWithSignature(operation *phase0.VoluntaryExit, signature [96]byte) (*phase0.VoluntaryExit, [96]byte) {
-
-	// fuzz validator bls execution change message
-	operation = c.fuzzExitMessage(operation)
-
-	// fuzz signature
-	if FuzzinessAct() {
-		testcase := make([]byte, 96)
-		rand.Read(testcase)
-		copy(signature[:], testcase)
-	}
-	return operation, signature
-}
-
-func InitializeFuzzingSeed() int64 {
+func (c *command) InitializeFuzzingSeed() int64 {
 	seed := viper.GetInt64("seed")
 	if seed == 0 {
 		seed = rand.Int63()
 	}
 	rand.Seed(seed)
-	fmt.Println("fuzzing with seed", seed)
+	if c.debug {
+		fmt.Println("fuzzing with seed", seed)
+	}
 	return seed
 }
 
@@ -388,7 +400,7 @@ func (c *command) createSignedOperation(ctx context.Context,
 	*phase0.SignedVoluntaryExit,
 	error,
 ) {
-	_ = InitializeFuzzingSeed()
+	_ = c.InitializeFuzzingSeed()
 
 	pubkey, err := util.BestPublicKey(account)
 	if err != nil {
@@ -406,7 +418,7 @@ func (c *command) createSignedOperation(ctx context.Context,
 	}
 
 	// fuzz before root calculation
-	operation = c.fuzzExitMessage(operation)
+	c.fuzzExitMessage(operation)
 
 	root, err := operation.HashTreeRoot()
 	if err != nil {
@@ -418,16 +430,12 @@ func (c *command) createSignedOperation(ctx context.Context,
 		fmt.Fprintf(os.Stderr, "Signing %#x with domain %#x by public key %#x\n", root, c.domain, account.PublicKey().Marshal())
 	}
 	// fuzz before signature
-	operation, root = c.fuzzExitMessageWithRoot(operation, root)
-
 	signature, err := signing.SignRoot(ctx, account, nil, root, c.domain)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to sign exit operation")
 	}
 
-	// fuzz after signature
-	operation, signature = c.fuzzExitMessageWithSignature(operation, signature)
-
+	//fuzz after signature
 	return &phase0.SignedVoluntaryExit{
 		Message:   operation,
 		Signature: signature,
@@ -483,6 +491,30 @@ func (c *command) validateOperation(_ context.Context,
 	bool,
 	string,
 ) {
+	var validatorInfo *beacon.ValidatorInfo
+	for _, chainValidatorInfo := range c.chainInfo.Validators {
+		if chainValidatorInfo.Index == c.signedOperation.Message.ValidatorIndex {
+			validatorInfo = chainValidatorInfo
+			break
+		}
+	}
+	if validatorInfo == nil {
+		return false, "validator not known on chain"
+	}
+	if c.debug {
+		fmt.Fprintf(os.Stderr, "Validator exit operation: %v", c.signedOperation)
+		fmt.Fprintf(os.Stderr, "On-chain validator info: %v\n", validatorInfo)
+	}
+
+	if validatorInfo.State == apiv1.ValidatorStateActiveExiting ||
+		validatorInfo.State == apiv1.ValidatorStateActiveSlashed ||
+		validatorInfo.State == apiv1.ValidatorStateExitedUnslashed ||
+		validatorInfo.State == apiv1.ValidatorStateExitedSlashed ||
+		validatorInfo.State == apiv1.ValidatorStateWithdrawalPossible ||
+		validatorInfo.State == apiv1.ValidatorStateWithdrawalDone {
+		return false, fmt.Sprintf("validator is in state %v, not suitable to generate an exit", validatorInfo.State)
+	}
+
 	return true, ""
 }
 
