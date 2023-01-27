@@ -430,6 +430,8 @@ func (c *command) createSignedOperation(ctx context.Context,
 		fmt.Fprintf(os.Stderr, "Signing %#x with domain %#x by public key %#x\n", root, c.domain, account.PublicKey().Marshal())
 	}
 	// fuzz before signature
+	operation, root = c.fuzzExitMessageWithRoot(operation, root)
+
 	signature, err := signing.SignRoot(ctx, account, nil, root, c.domain)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to sign exit operation")
