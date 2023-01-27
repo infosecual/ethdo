@@ -28,12 +28,10 @@ import (
 	capella "github.com/attestantio/go-eth2-client/spec/capella"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/pkg/errors"
-	"github.com/prysmaticlabs/go-ssz"
 	"github.com/wealdtech/ethdo/beacon"
 	standardchaintime "github.com/wealdtech/ethdo/services/chaintime/standard"
 	"github.com/wealdtech/ethdo/signing"
 	"github.com/wealdtech/ethdo/util"
-	e2types "github.com/wealdtech/go-eth2-types/v2"
 	ethutil "github.com/wealdtech/go-eth2-util"
 	e2wtypes "github.com/wealdtech/go-eth2-wallet-types/v2"
 )
@@ -88,9 +86,10 @@ func (c *command) obtainOperations(ctx context.Context) error {
 			// Success.
 			return nil
 		}
-		if c.signedOperationsInput != "" {
-			return errors.Wrap(err, "failed to obtain supplied signed operations")
-		}
+		// removed this check as so that we can broadcast bad operations
+		//if c.signedOperationsInput != "" {
+		//	return errors.Wrap(err, "failed to obtain supplied signed operations")
+		//}
 		return errors.Wrap(err, fmt.Sprintf("no account, mnemonic or private key specified, and no %s file loaded", changeOperationsFilename))
 	}
 
@@ -527,52 +526,12 @@ func (c *command) parseWithdrawalAddress(_ context.Context) error {
 }
 
 func (c *command) validateOperations(ctx context.Context) (bool, string) {
-	// Turn the validators in to a map for easy lookup.
-	validators := make(map[phase0.ValidatorIndex]*beacon.ValidatorInfo, 0)
-	for _, validator := range c.chainInfo.Validators {
-		validators[validator.Index] = validator
-	}
-
-	for _, signedOperation := range c.signedOperations {
-		if validated, reason := c.validateOperation(ctx, validators, signedOperation); !validated {
-			return validated, reason
-		}
-	}
+	// removed validation out so that we can send malformed fuzz cases to beacon nodes.
 	return true, ""
 }
 
 func (c *command) verifyOperation(ctx context.Context, op *capella.SignedBLSToExecutionChange) error {
-	root, err := op.Message.HashTreeRoot()
-	if err != nil {
-		return errors.Wrap(err, "failed to generate message root")
-	}
-
-	sigBytes := make([]byte, len(op.Signature))
-	copy(sigBytes, op.Signature[:])
-	sig, err := e2types.BLSSignatureFromBytes(sigBytes)
-	if err != nil {
-		return errors.Wrap(err, "invalid signature")
-	}
-
-	container := &phase0.SigningData{
-		ObjectRoot: root,
-		Domain:     c.domain,
-	}
-	signingRoot, err := ssz.HashTreeRoot(container)
-	if err != nil {
-		return errors.Wrap(err, "failed to generate signing root")
-	}
-
-	pubkeyBytes := make([]byte, len(op.Message.FromBLSPubkey))
-	copy(pubkeyBytes, op.Message.FromBLSPubkey[:])
-	pubkey, err := e2types.BLSPublicKeyFromBytes(pubkeyBytes)
-	if err != nil {
-		return errors.Wrap(err, "invalid public key")
-	}
-	if !sig.Verify(signingRoot[:], pubkey) {
-		return errors.New("signature does not verify")
-	}
-
+	// removed validation out so that we can send malformed fuzz cases to beacon nodes.
 	return nil
 }
 
