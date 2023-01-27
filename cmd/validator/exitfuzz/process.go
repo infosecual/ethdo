@@ -435,7 +435,9 @@ func (c *command) createSignedOperation(ctx context.Context,
 		return nil, errors.Wrap(err, "failed to sign exit operation")
 	}
 
-	//fuzz after signature
+	// fuzz after signature
+		operation, signature = c.fuzzExitMessageWithSignature(operation, signature)
+		
 	return &phase0.SignedVoluntaryExit{
 		Message:   operation,
 		Signature: signature,
