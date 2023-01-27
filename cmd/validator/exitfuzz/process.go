@@ -25,16 +25,13 @@ import (
 	"strings"
 
 	consensusclient "github.com/attestantio/go-eth2-client"
-	apiv1 "github.com/attestantio/go-eth2-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/pkg/errors"
-	"github.com/prysmaticlabs/go-ssz"
 	"github.com/spf13/viper"
 	"github.com/wealdtech/ethdo/beacon"
 	standardchaintime "github.com/wealdtech/ethdo/services/chaintime/standard"
 	"github.com/wealdtech/ethdo/signing"
 	"github.com/wealdtech/ethdo/util"
-	e2types "github.com/wealdtech/go-eth2-types/v2"
 	ethutil "github.com/wealdtech/go-eth2-util"
 	e2wtypes "github.com/wealdtech/go-eth2-wallet-types/v2"
 )
@@ -66,9 +63,9 @@ func (c *command) process(ctx context.Context) error {
 		return err
 	}
 
-	if validated, reason := c.validateOperation(ctx); !validated {
-		return fmt.Errorf("operation failed validation: %s", reason)
-	}
+	// if validated, reason := c.validateOperation(ctx); !validated {
+	// 	return fmt.Errorf("operation failed validation: %s", reason)
+	// }
 
 	if c.json || c.offline {
 		if c.debug {
@@ -209,7 +206,7 @@ func (c *command) generateOperationFromMnemonic(ctx context.Context) error {
 		validators[fmt.Sprintf("%#x", validator.Pubkey)] = validator
 	}
 
-	maxDistance := 1024
+	maxDistance := 999
 	// Start scanning the validator keys.
 	lastFoundIndex := 0
 	for i := 0; ; i++ {
@@ -221,10 +218,15 @@ func (c *command) generateOperationFromMnemonic(ctx context.Context) error {
 		}
 		validatorKeyPath := fmt.Sprintf("m/12381/3600/%d/0/0", i)
 
+		found := false
 		if err := c.generateOperationFromSeedAndPath(ctx, validators, seed, validatorKeyPath); err != nil {
 			return errors.Wrap(err, "failed to generate operation from seed and path")
+		} else {
+			found = true
 		}
-		lastFoundIndex = i
+		if found {
+			lastFoundIndex = i
+		}
 	}
 	return nil
 }
@@ -299,9 +301,9 @@ func (c *command) obtainOperationFromFile(ctx context.Context) error {
 		return errors.Wrap(err, "failed to parse exit operation file")
 	}
 
-	if err := c.verifySignedOperation(ctx, c.signedOperation); err != nil {
-		return err
-	}
+	// if err := c.verifySignedOperation(ctx, c.signedOperation); err != nil {
+	// 	return err
+	// }
 
 	return nil
 }
@@ -320,9 +322,9 @@ func (c *command) obtainOperationFromInput(ctx context.Context) error {
 		return errors.Wrap(err, "failed to parse exit operation input")
 	}
 
-	if err := c.verifySignedOperation(ctx, c.signedOperation); err != nil {
-		return err
-	}
+	// if err := c.verifySignedOperation(ctx, c.signedOperation); err != nil {
+	// 	return err
+	// }
 
 	return nil
 }
@@ -357,6 +359,10 @@ func FuzzinessAct() bool {
 }
 
 func (c *command) fuzzExitMessage(operation *phase0.VoluntaryExit) *phase0.VoluntaryExit {
+	if c.debug {
+		fmt.Println("before fuzzing: ", operation)
+		fmt.Println()
+	}
 	// fuzz validator index
 	if FuzzinessAct() {
 		operation.ValidatorIndex = phase0.ValidatorIndex(rand.Intn(1000000))
@@ -470,45 +476,45 @@ func (c *command) createSignedOperation(ctx context.Context,
 }
 
 func (c *command) verifySignedOperation(ctx context.Context, op *phase0.SignedVoluntaryExit) error {
-	root, err := op.Message.HashTreeRoot()
-	if err != nil {
-		return errors.Wrap(err, "failed to generate message root")
-	}
+	// root, err := op.Message.HashTreeRoot()
+	// if err != nil {
+	// 	return errors.Wrap(err, "failed to generate message root")
+	// }
 
-	sigBytes := make([]byte, len(op.Signature))
-	copy(sigBytes, op.Signature[:])
-	sig, err := e2types.BLSSignatureFromBytes(sigBytes)
-	if err != nil {
-		if c.verbose {
-			fmt.Fprintf(os.Stderr, "Invalid signature: %v\n", err.Error())
-		}
-		return errors.New("invalid signature")
-	}
+	// sigBytes := make([]byte, len(op.Signature))
+	// copy(sigBytes, op.Signature[:])
+	// sig, err := e2types.BLSSignatureFromBytes(sigBytes)
+	// if err != nil {
+	// 	if c.verbose {
+	// 		fmt.Fprintf(os.Stderr, "Invalid signature: %v\n", err.Error())
+	// 	}
+	// 	return errors.New("invalid signature")
+	// }
 
-	container := &phase0.SigningData{
-		ObjectRoot: root,
-		Domain:     c.domain,
-	}
-	signingRoot, err := ssz.HashTreeRoot(container)
-	if err != nil {
-		return errors.Wrap(err, "failed to generate signing root")
-	}
+	// container := &phase0.SigningData{
+	// 	ObjectRoot: root,
+	// 	Domain:     c.domain,
+	// }
+	// signingRoot, err := ssz.HashTreeRoot(container)
+	// if err != nil {
+	// 	return errors.Wrap(err, "failed to generate signing root")
+	// }
 
-	validatorInfo, err := c.chainInfo.FetchValidatorInfo(ctx, fmt.Sprintf("%d", op.Message.ValidatorIndex))
-	if err != nil {
-		return err
-	}
+	// validatorInfo, err := c.chainInfo.FetchValidatorInfo(ctx, fmt.Sprintf("%d", op.Message.ValidatorIndex))
+	// if err != nil {
+	// 	return err
+	// }
 
-	pubkeyBytes := make([]byte, len(validatorInfo.Pubkey[:]))
-	copy(pubkeyBytes, validatorInfo.Pubkey[:])
-	pubkey, err := e2types.BLSPublicKeyFromBytes(pubkeyBytes)
-	if err != nil {
-		return errors.Wrap(err, "invalid public key")
-	}
+	// pubkeyBytes := make([]byte, len(validatorInfo.Pubkey[:]))
+	// copy(pubkeyBytes, validatorInfo.Pubkey[:])
+	// pubkey, err := e2types.BLSPublicKeyFromBytes(pubkeyBytes)
+	// if err != nil {
+	// 	return errors.Wrap(err, "invalid public key")
+	// }
 
-	if !sig.Verify(signingRoot[:], pubkey) {
-		return errors.New("signature does not verify")
-	}
+	// if !sig.Verify(signingRoot[:], pubkey) {
+	// 	return errors.New("signature does not verify")
+	// }
 
 	return nil
 }
@@ -518,29 +524,29 @@ func (c *command) validateOperation(_ context.Context,
 	bool,
 	string,
 ) {
-	var validatorInfo *beacon.ValidatorInfo
-	for _, chainValidatorInfo := range c.chainInfo.Validators {
-		if chainValidatorInfo.Index == c.signedOperation.Message.ValidatorIndex {
-			validatorInfo = chainValidatorInfo
-			break
-		}
-	}
-	if validatorInfo == nil {
-		return false, "validator not known on chain"
-	}
-	if c.debug {
-		fmt.Fprintf(os.Stderr, "Validator exit operation: %v", c.signedOperation)
-		fmt.Fprintf(os.Stderr, "On-chain validator info: %v\n", validatorInfo)
-	}
+	// var validatorInfo *beacon.ValidatorInfo
+	// for _, chainValidatorInfo := range c.chainInfo.Validators {
+	// 	if chainValidatorInfo.Index == c.signedOperation.Message.ValidatorIndex {
+	// 		validatorInfo = chainValidatorInfo
+	// 		break
+	// 	}
+	// }
+	// if validatorInfo == nil {
+	// 	return false, "validator not known on chain"
+	// }
+	// if c.debug {
+	// 	fmt.Fprintf(os.Stderr, "Validator exit operation: %v", c.signedOperation)
+	// 	fmt.Fprintf(os.Stderr, "On-chain validator info: %v\n", validatorInfo)
+	// }
 
-	if validatorInfo.State == apiv1.ValidatorStateActiveExiting ||
-		validatorInfo.State == apiv1.ValidatorStateActiveSlashed ||
-		validatorInfo.State == apiv1.ValidatorStateExitedUnslashed ||
-		validatorInfo.State == apiv1.ValidatorStateExitedSlashed ||
-		validatorInfo.State == apiv1.ValidatorStateWithdrawalPossible ||
-		validatorInfo.State == apiv1.ValidatorStateWithdrawalDone {
-		return false, fmt.Sprintf("validator is in state %v, not suitable to generate an exit", validatorInfo.State)
-	}
+	// if validatorInfo.State == apiv1.ValidatorStateActiveExiting ||
+	// 	validatorInfo.State == apiv1.ValidatorStateActiveSlashed ||
+	// 	validatorInfo.State == apiv1.ValidatorStateExitedUnslashed ||
+	// 	validatorInfo.State == apiv1.ValidatorStateExitedSlashed ||
+	// 	validatorInfo.State == apiv1.ValidatorStateWithdrawalPossible ||
+	// 	validatorInfo.State == apiv1.ValidatorStateWithdrawalDone {
+	// 	return false, fmt.Sprintf("validator is in state %v, not suitable to generate an exit", validatorInfo.State)
+	// }
 
 	return true, ""
 }
