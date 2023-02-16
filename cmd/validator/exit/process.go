@@ -183,8 +183,7 @@ func (c *command) generateOperationFromMnemonicAndValidator(ctx context.Context)
 				return errors.Wrap(err, "failed to create withdrawal account")
 			}
 
-			err = c.generateOperationFromAccount(ctx, validatorInfo, validatorAccount, c.chainInfo.Epoch)
-			if err != nil {
+			if err := c.generateOperationFromAccount(ctx, validatorAccount); err != nil {
 				return err
 			}
 			break
@@ -197,24 +196,10 @@ func (c *command) generateOperationFromMnemonicAndValidator(ctx context.Context)
 func (c *command) generateOperationFromPrivateKey(ctx context.Context) error {
 	validatorAccount, err := util.ParseAccount(ctx, c.privateKey, nil, true)
 	if err != nil {
-		return errors.Wrap(err, "failed to create validator account")
+		return errors.Wrap(err, "failed to parse validator account")
 	}
 
-	validatorPubkey, err := util.BestPublicKey(validatorAccount)
-	if err != nil {
-		return err
-	}
-
-	validatorInfo, err := c.chainInfo.FetchValidatorInfo(ctx, fmt.Sprintf("%#x", validatorPubkey.Marshal()))
-	if err != nil {
-		return err
-	}
-
-	if c.verbose {
-		fmt.Fprintf(os.Stderr, "Validator %d found with public key %s\n", validatorInfo.Index, validatorPubkey)
-	}
-
-	if err = c.generateOperationFromAccount(ctx, validatorInfo, validatorAccount, c.chainInfo.Epoch); err != nil {
+	if err = c.generateOperationFromAccount(ctx, validatorAccount); err != nil {
 		return err
 	}
 
@@ -222,17 +207,12 @@ func (c *command) generateOperationFromPrivateKey(ctx context.Context) error {
 }
 
 func (c *command) generateOperationFromValidator(ctx context.Context) error {
-	validatorInfo, err := c.chainInfo.FetchValidatorInfo(ctx, c.validator)
-	if err != nil {
-		return err
-	}
-
 	validatorAccount, err := util.ParseAccount(ctx, c.validator, nil, true)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "failed to parse validator account")
 	}
 
-	if err := c.generateOperationFromAccount(ctx, validatorInfo, validatorAccount, c.chainInfo.Epoch); err != nil {
+	if err := c.generateOperationFromAccount(ctx, validatorAccount); err != nil {
 		return err
 	}
 
@@ -307,12 +287,19 @@ func (c *command) generateOperationFromSeedAndPath(ctx context.Context,
 }
 
 func (c *command) generateOperationFromAccount(ctx context.Context,
-	validator *beacon.ValidatorInfo,
 	account e2wtypes.Account,
-	epoch phase0.Epoch,
 ) error {
-	var err error
-	c.signedOperation, err = c.createSignedOperation(ctx, validator, account, epoch)
+	pubKey, err := util.BestPublicKey(account)
+	if err != nil {
+		return err
+	}
+
+	info, err := c.chainInfo.FetchValidatorInfo(ctx, fmt.Sprintf("%#x", pubKey.Marshal()))
+	if err != nil {
+		return err
+	}
+
+	c.signedOperation, err = c.createSignedOperation(ctx, info, account, c.chainInfo.Epoch)
 	return err
 }
 

@@ -82,6 +82,11 @@ func newCommand(_ context.Context) (*command, error) {
 		genesisValidatorsRoot:    viper.GetString("genesis-validators-root"),
 	}
 
+	// Account and validator are synonymous.
+	if c.validator == "" {
+		c.validator = viper.GetString("account")
+	}
+
 	// Timeout is required.
 	if c.timeout == 0 {
 		return nil, errors.New("timeout is required")
